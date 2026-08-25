@@ -63,6 +63,33 @@ export async function createLibraryDocument(templateName = 'pencil-new.pen', nam
   return openDocumentByUri(pathToFileURL(newFilePath).href)
 }
 
+/**
+ * A web-editor document: hosted by app.pen.dev in a <webview>, with no @ha/*
+ * device or IPC host. Persistence (IndexedDB) and the tool surface (WebMCP)
+ * live in the page, so hermes only tracks the tab identity here. This is the
+ * path that needs neither the installed Pen.app nor its internal modules.
+ */
+export function createWebDocument(name?: string): PenDocumentInfo {
+  const docId = randomUUID()
+  const displayName = (name || 'Canvas').slice(0, 60)
+
+  // Non-file URI so every fileURLToPath(...) guard (library, session ties,
+  // checkpoints) skips it — a web document is not a local .pen file.
+  const doc: PenDocument = {
+    docId,
+    fileURI: `pen-web://${docId}`,
+    device: null,
+    ipc: null,
+    guestWebContentsId: null,
+    web: true,
+    displayName
+  }
+
+  documents.set(docId, doc)
+
+  return describeDocument(doc)
+}
+
 export async function openDocumentByUri(fileURI: string): Promise<PenDocumentInfo> {
   const rt = ensureRuntime()
 
@@ -309,6 +336,16 @@ export async function flushPenAutosaves(): Promise<void> {
 }
 
 export function describeDocument(doc: PenDocument): PenDocumentInfo {
+  // Web documents have no device; their identity is the display name we stored.
+  if (doc.web) {
+    return {
+      docId: doc.docId,
+      fileURI: doc.fileURI,
+      displayName: doc.displayName || 'Canvas',
+      isTemporary: true
+    }
+  }
+
   const isTemporary = doc.device.isTemporary()
   const basename = path.basename(doc.fileURI)
 
@@ -363,6 +400,14 @@ export function closeDocument(docId: string): void {
   if (timer) {
     clearTimeout(timer)
     penAutosaveTimers.delete(docId)
+  }
+
+  // Web documents persist themselves (IndexedDB) and have no device/socket
+  // resource to flush or release — just drop the tab entry.
+  if (doc.web) {
+    documents.delete(docId)
+
+    return
   }
 
   try {

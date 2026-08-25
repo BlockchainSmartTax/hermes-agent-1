@@ -85,7 +85,8 @@ export function shutdownPenHost(): void {
 
   for (const doc of documents.values()) {
     try {
-      if (doc.device.getIsDirty()) {
+      // Web documents self-persist (IndexedDB) and have no device to flush.
+      if (!doc.web && doc.device?.getIsDirty()) {
         void doc.device.saveResource({ userAction: false })
       }
     } catch (error) {

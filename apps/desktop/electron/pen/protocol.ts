@@ -22,6 +22,7 @@ import {
   penLoggedIn,
   penSessionFilePath,
   penTemporaryDocumentsRoot,
+  penWebEditorUrl,
   renamePenInLibrary,
   requirePenModule
 } from '../pen-host'
@@ -142,8 +143,14 @@ export async function handlePenProtocolRequest(request: any, electronNet: any): 
 // Status + doors for the renderer
 // ---------------------------------------------------------------------------
 
-/** Canvas URL for a document — what the renderer webview loads. */
+/** Canvas URL for a document — what the renderer webview loads. Web documents
+ *  load the hosted pen.dev editor directly; bundle documents load the editor
+ *  served from the installed Pen.app over hermes-pen://. */
 export function penCanvasUrl(docId: string): string {
+  if (documents.get(docId)?.web) {
+    return penWebEditorUrl()
+  }
+
   return `${PEN_PROTOCOL}://editor/index.html?doc=${encodeURIComponent(docId)}`
 }
 

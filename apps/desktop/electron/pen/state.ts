@@ -30,9 +30,16 @@ export interface PenDocumentInfo {
 export interface PenDocument {
   docId: string
   fileURI: string
-  device: any // HermesPenResourceDevice
+  device: any // HermesPenResourceDevice — null for web-editor documents
   ipc: any | null // @ha/shared IPCHost bound to the webview guest
   guestWebContentsId: number | null
+  /** True when this document is hosted by the pen.dev WEB editor (app.pen.dev)
+   *  rather than the installed Pen.app bundle. Web documents have no @ha/*
+   *  device or IPC host — persistence + tools live in the page (IndexedDB +
+   *  WebMCP). Every device-touching path must guard on this. */
+  web?: boolean
+  /** Display name for web documents (bundle docs derive it from fileURI). */
+  displayName?: string
 }
 
 export interface PenRuntime {

@@ -23,6 +23,37 @@ import path from 'node:path'
  *  from this name (see @ha/ipc getSocketPath). */
 export const PEN_SOCKET_APP_NAME = 'hermes'
 
+// ---------------------------------------------------------------------------
+// Web editor mode (experimental) — embed pen.dev's HOSTED editor instead of
+// borrowing the installed Pen.app bundle.
+//
+// The bundle path (findPenInstallation + @ha/* host IPC) hardcodes pen.dev's
+// internal abstractions into hermes and breaks whenever they refactor tools
+// upstream. Their guidance: host the web editor (app.pen.dev), which owns its
+// own tools (WebMCP) and persistence (IndexedDB), so nothing internal is
+// vendored and users without the desktop app still get a canvas.
+//
+// Opt-in while the agent<->editor tool bridge is still being defined with the
+// Pencil team: set `HERMES_PEN_WEB=1`. The URL is overridable for dev/staging.
+// ---------------------------------------------------------------------------
+
+/** Default hosted pen.dev editor. `/new` boots a fresh canvas; the app
+ *  persists documents to IndexedDB per origin. */
+const PEN_WEB_EDITOR_DEFAULT_URL = 'https://app.pen.dev/new'
+
+/** True when hermes should embed the hosted web editor rather than the
+ *  installed Pen.app bundle. Off by default — the bundle path stays the
+ *  shipping default until the web tool bridge lands. */
+export function penWebEditorEnabled(): boolean {
+  return process.env.HERMES_PEN_WEB === '1' || process.env.HERMES_PEN_WEB === 'true'
+}
+
+/** The hosted editor URL to embed. Overridable via HERMES_PEN_WEB_URL for
+ *  dev/staging or a partner-customized embed build. */
+export function penWebEditorUrl(): string {
+  return process.env.HERMES_PEN_WEB_URL || PEN_WEB_EDITOR_DEFAULT_URL
+}
+
 export interface PenInstallation {
   /** /Applications/Pen.app */
   appPath: string

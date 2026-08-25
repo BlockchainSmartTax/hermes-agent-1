@@ -21,11 +21,12 @@ import {
   penLoggedIn,
   penSessionFilePath,
   penTemporaryDocumentsRoot,
+  penWebEditorEnabled,
   renamePenInLibrary,
   requirePenModule
 } from '../pen-host'
 
-import { closeDocument, createLibraryDocument, describeDocument, documentIsOpen, openDocumentByUri } from './documents'
+import { closeDocument, createLibraryDocument, createWebDocument, describeDocument, documentIsOpen, openDocumentByUri } from './documents'
 import { documents, log, type PenDocumentInfo, runtime } from './state'
 import { ensureRuntime } from './runtime'
 
@@ -80,11 +81,14 @@ export function penStatus(): PenStatus {
   // first call anyway — this sync path only serves in-process callers.
   void penIconDataUrl(install?.appPath)
 
+  // Web-editor mode needs no local install: the hosted editor IS the canvas.
+  const webMode = penWebEditorEnabled()
+
   return {
-    available: Boolean(install),
-    loggedIn: penLoggedIn(),
+    available: webMode || Boolean(install),
+    loggedIn: webMode || penLoggedIn(),
     version: install?.version ?? '',
-    running: Boolean(runtime),
+    running: webMode || Boolean(runtime),
     icon: penIconCache,
     openDocuments: [...documents.values()].map(describeDocument)
   }
@@ -95,6 +99,12 @@ export async function openPenCanvas(options: {
   path?: string
   template?: string
 }): Promise<PenDocumentInfo> {
+  // Web-editor mode: the hosted editor owns documents (IndexedDB), so there is
+  // no local .pen file to open or template to copy — just a tab to track.
+  if (penWebEditorEnabled()) {
+    return createWebDocument(options.name)
+  }
+
   if (options.path) {
     const resolved = path.resolve(options.path)
 
