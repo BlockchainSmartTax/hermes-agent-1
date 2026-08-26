@@ -138,6 +138,20 @@ jobs:
           ref: ${{ inputs.tag }}
           fetch-tags: true
 
+      - name: Resolve toolchain pins from pm/lock.json
+        id: pins
+        shell: bash
+        # The host toolchain that BUILDS the artifact comes from the same
+        # pin table as the embedded runtimes (pm/lock.json), so gate == pin
+        # by construction in build-bundled-desktop.mjs's toolchain gates.
+        run: |
+          python -c '
+          import json
+          pkgs = json.load(open("pm/lock.json"))["packages"]
+          for tool in ("node", "npm", "uv"):
+              print(tool + "=" + pkgs[tool]["version"])
+          ' >> "$GITHUB_OUTPUT"
+
       - name: Resolve toolchain cache key
         id: toolchain
         shell: bash
@@ -153,15 +167,18 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 26
+          node-version: ${{ steps.pins.outputs.node }}
           cache: npm
 
-      - name: Install npm 12
+      - name: Install pinned npm
         shell: bash
-        run: npm --version | grep -q '^12\.' || npm i -g npm@12
+        env:
+          NPM_PIN: ${{ steps.pins.outputs.npm }}
+        run: npm --version | grep -qx "$NPM_PIN" || npm i -g "npm@$NPM_PIN"
 
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # 9.0.0
         with:
+          version: ${{ steps.pins.outputs.uv }}
           enable-cache: false
 
       - name: Cache vcpkg OpenSSL (arm64)
@@ -216,7 +233,7 @@ jobs:
             ui-tui/packages/*/node_modules
             web/node_modules
             tests-js/node_modules
-          key: node-modules-${{ matrix.target.label }}-node26-npm12-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ matrix.target.label }}-node${{ steps.pins.outputs.node }}-npm${{ steps.pins.outputs.npm }}-${{ hashFiles('package-lock.json') }}
 
       - name: Azure login (OIDC)
         if: startsWith(matrix.target.label, 'win32-') && vars.AZURE_CLIENT_ID != ''
