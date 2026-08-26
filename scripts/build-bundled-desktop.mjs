@@ -87,8 +87,88 @@ function requireOnPath(tool) {
 
 // ── 1. preflight ────────────────────────────────────────────────────────────
 
-for (const tool of ['git', 'npm']) {
+for (const tool of ['git', 'npm', 'uv']) {
   requireOnPath(tool)
+}
+
+// Toolchain gates. The build's output depends on these tools, so a wrong
+// version makes a silently different artifact (the first Windows build
+// shipped a wrong-arch uv exactly this way). The rules come from ONE
+// source — package.json "engines". The EMBEDDED runtimes are a separate
+// concern: they come from pm/lock.json via `pm bundle` (the payload
+// python/node/uv are the pinned artifacts in the pm store), never from
+// the host toolchain — the gates below only approve the tools that BUILD
+// the artifact (the JS surfaces are built and npm-installed by the host
+// node; the payload interpreter is installed by the host uv). CI installs
+// the pinned versions from pm/lock.json as the host toolchain, so
+// gate == pin there by construction.
+export function parseVersion(text) {
+  const match = String(text).match(/(\d+)\.(\d+)\.(\d+)/)
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+}
+
+export function compareVersions(a, b) {
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return 0
+}
+
+// The subset of semver ranges that package.json engines actually uses:
+// space-separated comparators AND together, `||` separates alternatives.
+// An unparseable comparator fails closed.
+export function satisfiesRange(version, range) {
+  return String(range).split('||').some(alternative => {
+    const comparators = alternative.trim().split(/\s+/).filter(Boolean)
+    if (comparators.length === 0) return false
+    return comparators.every(comparator => {
+      const m = comparator.match(/^(>=|<=|>|<|=)?v?(\d+)\.(\d+)\.(\d+)$/)
+      if (!m) return false
+      const cmp = compareVersions(version, [Number(m[2]), Number(m[3]), Number(m[4])])
+      switch (m[1]) {
+        case '>=': return cmp >= 0
+        case '<=': return cmp <= 0
+        case '>': return cmp > 0
+        case '<': return cmp < 0
+        default: return cmp === 0
+      }
+    })
+  })
+}
+
+export function uvBannerProblem(banner) {
+  // A build triple is three dash-joined words that end in letters
+  // (aarch64-pc-windows-msvc). Its position varies: nix builds print it
+  // first in the parens, official builds put a commit hash and a date
+  // before it. Match it anywhere — the date (2026-07-31) cannot match
+  // because its last segment is digits.
+  return /[a-z0-9_]+-[a-z0-9]+-[a-z][a-z0-9-]*/.test(String(banner))
+    ? null
+    : 'its --version prints no build triple; the payload arch guard needs one (official uv 0.12+, or any nix/source build)'
+}
+
+const engines = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).engines || {}
+
+for (const tool of ['node', 'npm']) {
+  const text = tool === 'node' ? process.version : capture('npm --version')
+  const version = parseVersion(text)
+  if (!version) {
+    fail(`${tool}: cannot parse a version from ${JSON.stringify(text)}`)
+  }
+  const range = engines[tool]
+  if (range && !satisfiesRange(version, range)) {
+    fail(`${tool} ${version.join('.')} does not satisfy package.json engines ${JSON.stringify(range)} — the build would make a different artifact`)
+  }
+  console.log(`[build-bundled] ${tool} ${version.join('.')} (engines: ${range || 'unconstrained'})`)
+}
+
+{
+  const uvBanner = capture('uv --version')
+  const problem = uvBannerProblem(uvBanner)
+  if (problem) {
+    fail(`uv (${uvBanner}) would make a broken artifact: ${problem}`)
+  }
+  console.log(`[build-bundled] ${uvBanner} (build-host uv; the payload uv comes from pm/lock.json)`)
 }
 
 let tag = tagArg
@@ -162,7 +242,6 @@ if (!fs.existsSync(path.join(webDist, 'index.html'))) {
 
 // ── 4. pm bundle ────────────────────────────────────────────────────────────
 
-requireOnPath('uv')
 const pyMinor = pythonMinorFromLock()
 run(
   'uv',
