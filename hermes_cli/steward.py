@@ -163,6 +163,21 @@ def read_install_stamp(project_root: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def is_bundled_payload(project_root: Path) -> bool:
+    """True when ``project_root`` is a bundled desktop payload's ``repo/``.
+
+    THE shape predicate for the sealed-bundle branch, and a mirror of the
+    Electron shell's ``installShape() === 'bundled'``: the build stamp is
+    the authority, so filesystem coincidences (a sibling ``bin/``, a
+    surviving ``apps/desktop/package.json``) can never promote a checkout
+    into it. A missing, foreign, or unreadable stamp means NOT bundled.
+    """
+    try:
+        return read_install_stamp(Path(project_root)).get("payload") == "bundled"
+    except Exception:  # noqa: BLE001 — a bad stamp must not take a caller down
+        return False
+
+
 def sealed_steward(project_root: Path) -> Optional[str]:
     """The steward owning the sealed tree at ``project_root``, or ``None``.
 
