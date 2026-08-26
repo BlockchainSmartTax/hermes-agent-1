@@ -3449,42 +3449,59 @@ def _append_node_dir_for_service(
 ) -> None:
     """Add the Node directory a generated service unit should use to *path_entries*.
 
-    The Hermes-managed Node under ``$HERMES_HOME/node`` goes first when it
-    exists. A bare ``shutil.which("node")`` cannot be trusted on its own here:
-    a service unit is written once and then survives reboots, so resolving a
-    system Node that happens to be ahead on the installing shell's PATH bakes
-    the wrong interpreter in permanently — the exact failure the desktop
-    backend spawn was fixed for. Managed dirs are profile-scoped, so each
-    profile's unit still names its own Node.
+    The pm store's Node/npm dirs go first when installed. A bare
+    ``shutil.which("node")`` cannot be trusted on its own here: a service unit
+    is written once and then survives reboots, so resolving a system Node that
+    happens to be ahead on the installing shell's PATH bakes the wrong
+    interpreter in permanently — the exact failure the desktop backend spawn
+    was fixed for. The store is profile-scoped, so each profile's unit still
+    names its own Node.
 
     *hermes_root* is the Hermes home the unit will run against. System units
     installed via sudo MUST pass the **target user's** home: probing the
     default (the calling user's — root's — tree) would bake root's Node into
-    the target user's unit. The probe swallows OSError: an unreadable
-    candidate dir (hardened home) means "skip the rung", not "crash the
-    generator".
+    the target user's unit; the target user's installed-state file
+    (``<hermes_root>/tools/facts.json``) is read directly for that case.
+    The probe swallows OSError: an unreadable candidate dir (hardened home)
+    means "skip the rung", not "crash the generator".
 
-    PATH lookup remains the fallback rung for installs with no managed Node.
+    PATH lookup remains the fallback rung for installs with no pm-managed Node.
     """
-    from hermes_constants import (
-        hermes_managed_node_tree_present,
-        iter_hermes_node_dirs,
-    )
+    managed_dirs: list[str] = []
+    try:
+        if hermes_root is None:
+            import pm
 
-    managed_node_present = hermes_managed_node_tree_present(hermes_root)
-    for directory in iter_hermes_node_dirs(hermes_root) if managed_node_present else ():
-        entry = str(directory)
+            env = pm.env_for("npm", base_env={"PATH": ""})
+            managed_dirs = [d for d in env.get("PATH", "").split(os.pathsep) if d]
+        else:
+            from pm.lock import Facts
+
+            store_root = Path(hermes_root) / "tools"
+            facts = Facts(store_root / "facts.json")
+            for name in ("npm", "node"):
+                value = facts.env_for(name, store_root).get("PATH") or []
+                for directory in value if isinstance(value, list) else [value]:
+                    if directory and directory not in managed_dirs:
+                        managed_dirs.append(str(directory))
+    except Exception:
+        managed_dirs = []
+
+    managed_appended = False
+    for entry in managed_dirs:
         try:
-            present = directory.is_dir()
+            present = Path(entry).is_dir()
         except OSError:
             present = False
-        if present and entry not in path_entries:
-            path_entries.append(entry)
+        if present:
+            managed_appended = True
+            if entry not in path_entries:
+                path_entries.append(entry)
 
     # Ambient PATH lookup is a fallback, not an additional rung. Once the
     # target Hermes home provides managed Node, consulting the invoker's PATH
     # makes a system unit differ between sudo/root and its service user.
-    if managed_node_present:
+    if managed_appended:
         return
 
     resolved_node = shutil.which("node")

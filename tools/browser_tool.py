@@ -2506,9 +2506,8 @@ def _resolve_npx_bin() -> Optional[str]:
 
     Checking bare PATH first would let a broken or unrelated system npx
     shadow a healthy Hermes-managed one with no recovery — every candidate
-    is therefore validated with ``node_tool_runnable`` (the same check
-    ``find_hermes_node_executable`` uses to self-heal a managed Node tree)
-    before being trusted, falling through to the next candidate otherwise.
+    is therefore validated with ``node_tool_runnable`` before being trusted,
+    falling through to the next candidate otherwise.
     """
     extended_path = _merge_browser_path("")
     if extended_path:

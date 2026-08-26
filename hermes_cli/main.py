@@ -2379,14 +2379,11 @@ def _tui_need_rebuild(root: Path) -> bool:
 
 
 def _ensure_tui_node() -> None:
-    """Make sure `node` + `npm` are on PATH for the TUI.
+    """Make sure `node` + `npm` are resolvable for the TUI.
 
-    If either is missing and scripts/lib/node-bootstrap.sh is available, source
-    it and call `ensure_node` (fnm/nvm/proto/brew/bundled cascade). After
-    install, capture the resolved node binary path from the bash subprocess
-    and prepend its directory to os.environ["PATH"] so shutil.which finds the
-    new binaries in this Python process — regardless of which version manager
-    was used (nvm, fnm, proto, brew, or the bundled fallback).
+    If either is missing from PATH, install the pm-managed node/npm packages
+    and prepend the store's PATH contribution to ``os.environ["PATH"]`` so
+    shutil.which finds them in this Python process.
 
     Idempotent no-op when node+npm are already discoverable. Set
     ``HERMES_SKIP_NODE_BOOTSTRAP=1`` to disable auto-install.
@@ -2396,47 +2393,16 @@ def _ensure_tui_node() -> None:
     if os.environ.get("HERMES_SKIP_NODE_BOOTSTRAP"):
         return
 
-    helper = PROJECT_ROOT / "scripts" / "lib" / "node-bootstrap.sh"
-    if not helper.is_file():
-        return
-
-    from hermes_constants import get_hermes_home
-
-    hermes_home = str(get_hermes_home())
     try:
-        # Helper writes logs to stderr; we ask bash to print `command -v node`
-        # on stdout once ensure_node succeeds. Subshell PATH edits don't leak
-        # back into Python, so the stdout capture is the bridge.
-        result = subprocess.run(
-            [
-                "bash",
-                "-c",
-                f'source "{helper}" >&2 && ensure_node >&2 && command -v node',
-            ],
-            env={**os.environ, "HERMES_HOME": hermes_home},
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
+        import pm
+
+        runner = pm.ensure("npm")
+    except Exception:
         return
 
-    parts = os.environ.get("PATH", "").split(os.pathsep)
-    extras: list[Path] = []
-
-    resolved = (result.stdout or "").strip()
-    if resolved:
-        extras.append(Path(resolved).resolve().parent)
-
-    extras.extend([Path(hermes_home) / "node" / "bin", Path.home() / ".local" / "bin"])
-
-    for extra in extras:
-        s = str(extra)
-        if extra.is_dir() and s not in parts:
-            parts.insert(0, s)
-    os.environ["PATH"] = os.pathsep.join(parts)
+    new_path = runner.env.get("PATH")
+    if new_path:
+        os.environ["PATH"] = new_path
 
 
 def _find_bundled_tui(hermes_cli_dir: Path | None = None) -> Path | None:

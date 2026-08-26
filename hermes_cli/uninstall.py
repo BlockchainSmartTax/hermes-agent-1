@@ -151,8 +151,9 @@ def _node_symlink_candidate_dirs() -> "list[Path]":
 def remove_node_symlinks(hermes_home: Path) -> list:
     """Remove the node/npm/npx symlinks the installer placed on PATH.
 
-    The POSIX installer (``scripts/install.sh`` / ``scripts/lib/node-bootstrap.sh``)
-    symlinks node/npm/npx into the same directory as the ``hermes`` command:
+    Historical POSIX installs (``scripts/install.sh`` before pm owned the
+    Node runtime) symlinked node/npm/npx into the same directory as the
+    ``hermes`` command:
 
     - ``/usr/local/bin/`` on root FHS installs (Linux, uid 0)
     - ``$PREFIX/bin/`` on Termux
