@@ -322,22 +322,27 @@ RUN mkdir -p /opt/hermes/bin && \
 # That makes support triage from container bug reports impossible:
 # we can't tell which commit the user is actually running.
 #
-# Fix: write the commit SHA passed via the HERMES_GIT_SHA build-arg to
-# /opt/hermes/.hermes_build_sha at build time, and have
-# hermes_cli/build_info.py read it at runtime.  Both `hermes dump` and
-# banner.get_git_banner_state() try the baked SHA first, then fall back
-# to live `git rev-parse` for source installs (unchanged behaviour).
+# Fix: write an install stamp (install-stamp.json) carrying the commit SHA
+# passed via the HERMES_GIT_SHA build-arg, and have
+# hermes_cli/version_info.py read it at runtime (stamp first, live git
+# second, unknown third). Both `hermes dump` and
+# banner.get_git_banner_state() consume it through version_info.
 #
-# The arg is optional — local `docker build` without --build-arg omits the
-# SHA file (and records a null provenance revision), so build-info falls back
-# to live-git lookup.  CI
-# (.github/workflows/docker.yml) passes ${{ github.sha }} so
-# every published image has it.
+# The arg is optional — a local `docker build` without --build-arg writes an
+# all-zero fallback commit (which version_info skips, and records a null
+# provenance revision), so dump honestly reports "(unknown)". CI
+# (.github/workflows/docker.yml) passes ${{ github.sha }} so every published
+# image has real provenance. updateMechanism is `external`: the image is
+# rebuilt and re-pulled, it never updates itself.
 ARG HERMES_GIT_SHA=
 RUN set -eu; \
     if [ -n "${HERMES_GIT_SHA}" ]; then \
-        printf '%s\n' "${HERMES_GIT_SHA}" > /opt/hermes/.hermes_build_sha; \
+        stamp_commit="${HERMES_GIT_SHA}"; stamp_source="docker"; \
+    else \
+        stamp_commit="0000000000000000000000000000000000000000"; stamp_source="fallback"; \
     fi; \
+    printf '{"schemaVersion":2,"commit":"%s","distribution":"docker","source":"%s","updateMechanism":"external"}\n' \
+        "${stamp_commit}" "${stamp_source}" > /opt/hermes/install-stamp.json; \
     mkdir -p /etc/hermes; \
     HERMES_GIT_SHA="${HERMES_GIT_SHA}" python3 -c 'import json, os, pathlib, tomllib; project = tomllib.loads(pathlib.Path("/opt/hermes/pyproject.toml").read_text(encoding="utf-8"))["project"]; marker = pathlib.Path("/etc/hermes/image-provenance.json"); marker.write_text(json.dumps({"schema": 1, "deployment_kind": "image", "manager": "docker", "image": "nousresearch/hermes-agent", "version": project["version"], "revision": os.environ.get("HERMES_GIT_SHA") or None}, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8"); marker.chmod(0o444)'
 
