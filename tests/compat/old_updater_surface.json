@@ -3,6 +3,7 @@
   "stats": {
     "mode": "tree",
     "files_analyzed": [
+      "hermes_cli/post_update.py",
       "hermes_cli/update_cmd.py",
       "hermes_cli/update_lock.py",
       "pm/__init__.py",
@@ -26,9 +27,13 @@
     "hermes_cli.backup::verify_sqlite_integrity",
     "hermes_cli.banner::_github_compare_behind",
     "hermes_cli.config::check_config_version",
+    "hermes_cli.config::get_config_path",
+    "hermes_cli.config::get_env_path",
     "hermes_cli.config::get_missing_config_fields",
     "hermes_cli.config::get_missing_env_vars",
     "hermes_cli.config::migrate_config",
+    "hermes_cli.config_migrations::SUPPORT_FLOOR_VERSION",
+    "hermes_cli.config_migrations::support_floor_message",
     "hermes_cli.gateway::_graceful_restart_via_sigusr1",
     "hermes_cli.gateway::_launchd_kickstart",
     "hermes_cli.gateway::_launchd_service_registered",
@@ -42,7 +47,11 @@
     "hermes_cli.gateway::wait_for_launchd_gateway_supervision",
     "hermes_cli.gitlock::clear_stale_git_locks",
     "hermes_cli.sizefmt::format_bytes",
+    "hermes_cli.steward::STEWARD_DESKTOP",
+    "hermes_cli.steward::read_install_stamp",
+    "hermes_cli::boot_bootstrap",
     "hermes_cli::main",
+    "hermes_cli::venv_sync",
     "hermes_constants::FIRST_PARTY_MODULE_ROOTS",
     "hermes_constants::display_hermes_home",
     "hermes_constants::get_default_hermes_root",
@@ -54,6 +63,8 @@
     "pm.ensure::_facts",
     "pm.ensure::_store",
     "pm.ensure::env_for",
+    "pm.ensure::lazy_installs_allowed",
+    "pm.ensure::sealed",
     "pm.ensure::sync_venv",
     "pm.ensure::uv",
     "pm.lock::Facts",
@@ -64,6 +75,7 @@
     "pm.store::extract",
     "pm::",
     "pm::paths",
+    "tools.skills_sync::sync_skills",
     "utils::atomic_json_write"
   ],
   "guarded_only": [
@@ -134,7 +146,6 @@
     "plugins.memory.honcho.cli::sync_honcho_profiles_quiet",
     "pm.extras::",
     "tools.browser_tool::warm_agent_browser_npx_cache",
-    "tools.environments.local::",
-    "tools.skills_sync::sync_skills"
+    "tools.environments.local::"
   ]
 }
