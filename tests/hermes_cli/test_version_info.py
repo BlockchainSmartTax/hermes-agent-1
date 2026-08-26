@@ -5,6 +5,7 @@ from hermes_cli.version_info import (
     VersionInfo,
     _derived_version,
     _reset_version_info_cache,
+    _resolve_stamp_file,
     _stamp_version_info,
     get_version_info,
 )
@@ -170,3 +171,31 @@ def test_get_version_info_unknown_when_no_stamp_and_no_git(monkeypatch):
     assert info.distance is None
     assert info.commit is None
     assert info.source == "unknown"
+
+
+def test_resolve_stamp_file_honors_install_root(tmp_path, monkeypatch):
+    """Sealed installs (the Nix wrapper) point HERMES_INSTALL_ROOT at the stamp dir."""
+    stamp = {"commit": "e" * 40, "source": "nix", "distribution": "nix", "updateMechanism": "external"}
+    (tmp_path / "install-stamp.json").write_text(json.dumps(stamp))
+    monkeypatch.setenv("HERMES_INSTALL_ROOT", str(tmp_path))
+
+    assert _resolve_stamp_file() == tmp_path / "install-stamp.json"
+
+    info = get_version_info()
+    assert info.commit == "e" * 40
+    assert info.source == "nix"
+    assert info.distribution == "nix"
+
+
+def test_resolve_stamp_file_install_root_without_stamp_is_none(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_INSTALL_ROOT", str(tmp_path))
+    assert _resolve_stamp_file() is None
+
+
+def test_resolve_stamp_file_falls_back_to_code_root_when_env_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("HERMES_INSTALL_ROOT", raising=False)
+    stamp = {"commit": "f" * 40, "source": "docker", "updateMechanism": "external"}
+    (tmp_path / "install-stamp.json").write_text(json.dumps(stamp))
+    monkeypatch.setattr("hermes_cli.version_info._CODE_ROOT", tmp_path)
+
+    assert _resolve_stamp_file() == tmp_path / "install-stamp.json"
