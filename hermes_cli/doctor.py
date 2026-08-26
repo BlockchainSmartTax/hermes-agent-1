@@ -1176,7 +1176,7 @@ def check_macos_tcc_anchor_removed() -> None:
         if not marker.is_file():
             continue
         try:
-            source = Path(marker.read_text(encoding="utf-8").strip())
+            source = Path(marker.read_text(encoding="utf-8-sig").strip())
             venv_py = venv_bin / "python"
             if source.is_file() and venv_py.is_file() and not venv_py.is_symlink():
                 tmp = venv_bin / ".python-unanchor-tmp"

@@ -2859,7 +2859,7 @@ def _npm_lockfile_changed(hermes_root: Path) -> bool:
         cache_file = hermes_root / f".npm_lock_hash_{cache_key}"
         if not cache_file.exists():
             return True
-        return cache_file.read_text(encoding="utf-8").strip() != current
+        return cache_file.read_text(encoding="utf-8-sig").strip() != current
     except OSError:
         return True
 
@@ -3982,7 +3982,7 @@ def _dependency_sync_would_rewrite(dist_name: str) -> bool | None:
         from packaging.version import Version
 
         pyproject = _m().PROJECT_ROOT / "pyproject.toml"
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8-sig"))
         project = data.get("project") or {}
         req_strings: list[str] = list(project.get("dependencies") or [])
         for extra_reqs in (project.get("optional-dependencies") or {}).values():

@@ -173,7 +173,7 @@ def read_install_method() -> str | None:
     """
     stamp = os.path.join(_resolved_home(), ".install_method")
     try:
-        with open(stamp, encoding="utf-8") as handle:
+        with open(stamp, encoding="utf-8-sig") as handle:
             method = handle.read().strip().lower()
         return method or None
     except OSError:

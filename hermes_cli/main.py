@@ -3418,7 +3418,7 @@ def cmd_chat(args):
             if _qfile == "-":
                 args.query = sys.stdin.read()
             else:
-                with open(_qfile, "r", encoding="utf-8", errors="replace") as _fh:
+                with open(_qfile, "r", encoding="utf-8-sig", errors="replace") as _fh:
                     args.query = _fh.read()
         except OSError as _e:
             print(f"Error: cannot read --query-file {_qfile}: {_e}", file=sys.stderr)
