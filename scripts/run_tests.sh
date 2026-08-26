@@ -135,7 +135,7 @@ done
 #     the build step just loaded; stripping it made every per-file pytest
 #     subprocess rebuild the 5GB image from a cold builder cache instead
 #     (~4 min per worker per run, and the rebuilt image lacked the
-#     HERMES_GIT_SHA build-arg the workflow bakes in).
+#     install stamp the workflow bakes in).
 #
 # These are test-infrastructure knobs, not credentials — same class as the
 # HERMES_RUN_SLOW_PET_TESTS / HERMES_E2E_BROWSER opt-ins already forwarded.
