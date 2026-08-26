@@ -10480,6 +10480,53 @@ def cmd_update(args):
         print_update_plan(collect_runtime_inventory())
         return
 
+    # --install-id / --set-channel work on any non-external install and
+    # never touch the tree — handle them before the admission gate so the
+    # desktop About page and channel switching work from a bundled CLI.
+    if getattr(args, "install_id", False):
+        from hermes_cli.update_channel import install_id
+
+        print(f"{install_id(PROJECT_ROOT)} ({PROJECT_ROOT})")
+        sys.exit(0)
+
+    if getattr(args, "set_channel", None):
+        from hermes_cli.config import detect_install_method
+        from hermes_cli.update_channel import (
+            CHANNEL_NIGHTLY,
+            CHANNEL_STABLE,
+            nightly_normalized_note,
+            set_install_channel,
+        )
+
+        try:
+            sha16 = set_install_channel(args.set_channel, PROJECT_ROOT)
+        except ValueError as exc:
+            print(f"✗ {exc}")
+            sys.exit(1)
+        print(f"✓ Channel '{args.set_channel}' recorded for install {sha16}.")
+        install_method = detect_install_method(PROJECT_ROOT)
+        if args.set_channel == CHANNEL_NIGHTLY:
+            if install_method == "git":
+                print(nightly_normalized_note())
+            else:
+                print("⚠ Nightly builds move fast: expect forward-incompatible")
+                print("  state — data written by newer code may not load in stable.")
+        elif args.set_channel == CHANNEL_STABLE:
+            # Honest wait: a nightly build outversions today's stable, and
+            # the updater never downgrades. Say when the switch takes
+            # effect, and where the impatient path is.
+            from hermes_cli.steward import read_install_stamp
+
+            version = read_install_stamp(Path(PROJECT_ROOT)).get("displayVersion") or ""
+            if "-nightly." in version:
+                base = version.split("-nightly.")[0]
+                print(f"→ You are on {version}. Stable updates resume once a")
+                print(f"  stable release reaches v{base} — until then this install")
+                print("  stays where it is. To switch now, reinstall stable:")
+                print("  https://hermes-agent.nousresearch.com/")
+                print("  (Nightly state may not load in older stable builds.)")
+        sys.exit(0)
+
     # Image-managed / package-managed admission gate (#91277 Phase 3): one
     # shared decision for every mutation surface. Consults the baked image
     # provenance marker first (authoritative, fail-closed on malformed),
