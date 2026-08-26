@@ -103,6 +103,10 @@ _CLONE_ALL_DEFAULT_EXCLUDE_ROOT: frozenset[str] = frozenset({
     "profiles",
     "bin",
     "node_modules",
+    # Managed runtime trees — install artifacts, never profile state
+    # (install/profile bucket split; see test_install_bucket_separation).
+    ".hermes-runtime",
+    "node",
 })
 
 # Per-profile history artifacts excluded from --clone-all regardless of the
@@ -211,6 +215,8 @@ _DEFAULT_EXPORT_EXCLUDE_ROOT = frozenset({
     "profiles",             # other profiles — never recursive-export
     "bin",                  # installed binaries (tirith, etc.)
     "node_modules",         # npm packages
+    ".hermes-runtime",      # managed runtime tree (install artifact)
+    "node",                 # legacy pre-split managed Node tree
     # Databases & runtime state
     "state.db", "state.db-shm", "state.db-wal",
     "hermes_state.db",
