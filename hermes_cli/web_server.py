@@ -19494,6 +19494,19 @@ def start_server(
 
     apply_nofile_soft_limit()
 
+    # Post-update boot bootstrap. This is the rung that covers desktop
+    # bundled installs: after an app-updater swap, the first `hermes serve`
+    # boot sees the new stamp commit and runs config migration / skills
+    # sync / state.db guard for this home. Two file reads when the code
+    # didn't change; never raises.
+    try:
+        from hermes_cli.boot_bootstrap import maybe_run_boot_bootstrap
+        from hermes_cli.main import PROJECT_ROOT as _boot_root
+
+        maybe_run_boot_bootstrap(Path(_boot_root))
+    except Exception as exc:
+        _log.debug("boot bootstrap skipped: %s", exc)
+
     import uvicorn
 
     try:
