@@ -872,6 +872,7 @@ def find_windows_gateway_services(
             profile_processes = find_profile_gateway_processes(strict=True)
         service_names_by_pid: dict[int, set[str]] = {}
         transitional_services_by_pid: dict[int, dict[str, str]] = {}
+        transitional_create_times_by_pid: dict[int, float] = {}
         pending_service_statuses = {
             "continue_pending",
             "pause_pending",
@@ -917,6 +918,26 @@ def find_windows_gateway_services(
                         f"SCM service {service_name}={service_status} "
                         "has no valid process ID"
                     )
+                try:
+                    service_create_time = float(
+                        psutil_module.Process(service_pid).create_time()
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"SCM service {service_name}={service_status} could not "
+                        f"validate PID {service_pid}"
+                    ) from exc
+                previous_create_time = transitional_create_times_by_pid.get(
+                    service_pid
+                )
+                if previous_create_time is not None and abs(
+                    service_create_time - previous_create_time
+                ) > 0.001:
+                    raise RuntimeError(
+                        "Transitional SCM service process identity changed during "
+                        f"SCM discovery: PID {service_pid}"
+                    )
+                transitional_create_times_by_pid[service_pid] = service_create_time
                 transitional_services_by_pid.setdefault(service_pid, {})[
                     service_name
                 ] = str(service_status)
@@ -1004,6 +1025,23 @@ def find_windows_gateway_services(
                 "Could not determine SCM ownership for gateway profile "
                 f"{profile_process.profile}"
             ) from exc
+    for service_pid, expected_create_time in sorted(
+        transitional_create_times_by_pid.items()
+    ):
+        try:
+            current_create_time = float(
+                psutil_module.Process(service_pid).create_time()
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Transitional SCM service process disappeared during SCM discovery: "
+                f"PID {service_pid}"
+            ) from exc
+        if abs(current_create_time - expected_create_time) > 0.001:
+            raise RuntimeError(
+                "Transitional SCM service process identity changed during SCM "
+                f"discovery: PID {service_pid}"
+            )
     return [found[name] for name in sorted(found)]
 
 

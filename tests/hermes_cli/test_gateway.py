@@ -1164,6 +1164,62 @@ def test_find_windows_gateway_services_rejects_transitional_service_without_pid(
     )
 
 
+@pytest.mark.parametrize(
+    ("create_times", "expected_error"),
+    [
+        pytest.param(
+            [ProcessLookupError("gone")],
+            "could not validate PID 900",
+            id="stale-pid",
+        ),
+        pytest.param(
+            [900.0, 901.0],
+            "identity changed during SCM discovery",
+            id="reused-pid",
+        ),
+    ],
+)
+def test_find_windows_gateway_services_validates_transitional_process_identity(
+    monkeypatch,
+    create_times,
+    expected_error,
+):
+    monkeypatch.setattr(gateway.sys, "platform", "win32")
+    remaining_create_times = iter(create_times)
+
+    class FakeService:
+        def as_dict(self):
+            return {
+                "name": "UnrelatedPending",
+                "pid": 900,
+                "status": "stop_pending",
+            }
+
+    class FakeProcess:
+        def __init__(self, pid):
+            assert pid == 900
+
+        def create_time(self):
+            value = next(remaining_create_times)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+    fake_psutil = SimpleNamespace(
+        win_service_iter=lambda: [FakeService()],
+        Process=FakeProcess,
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        gateway.find_windows_gateway_services(
+            psutil_module=fake_psutil,
+            profile_processes=[],
+        )
+
+    errors = [str(excinfo.value), str(excinfo.value.__cause__)]
+    assert any(expected_error in error for error in errors)
+
+
 @pytest.mark.parametrize("service_status", ["paused", "unknown", None])
 def test_find_windows_gateway_services_rejects_non_pending_indeterminate_status(
     monkeypatch,
