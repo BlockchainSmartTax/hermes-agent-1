@@ -871,6 +871,13 @@ def find_windows_gateway_services(
         if profile_processes is None:
             profile_processes = find_profile_gateway_processes(strict=True)
         service_names_by_pid: dict[int, set[str]] = {}
+        transitional_services_by_pid: dict[int, dict[str, str]] = {}
+        pending_service_statuses = {
+            "continue_pending",
+            "pause_pending",
+            "start_pending",
+            "stop_pending",
+        }
         for service in psutil_module.win_service_iter():
             try:
                 if all(
@@ -896,9 +903,24 @@ def find_windows_gateway_services(
             if service_status == "stopped":
                 continue
             if service_status != "running":
-                raise RuntimeError(
-                    f"SCM service {service_name} has indeterminate status: {service_status}"
-                )
+                if service_status not in pending_service_statuses:
+                    raise RuntimeError(
+                        f"SCM service {service_name} has indeterminate status: "
+                        f"{service_status}"
+                    )
+                # Transitional services are relevant only when their live PID
+                # is in a validated gateway's ancestor chain. Windows commonly
+                # leaves unrelated per-user services in STOP_PENDING; failing
+                # the entire scan on one would block every Desktop update.
+                if service_pid <= 0:
+                    raise RuntimeError(
+                        f"SCM service {service_name}={service_status} "
+                        "has no valid process ID"
+                    )
+                transitional_services_by_pid.setdefault(service_pid, {})[
+                    service_name
+                ] = str(service_status)
+                continue
             if service_pid <= 0:
                 raise RuntimeError(
                     f"Running SCM service {service_name} has no valid process ID"
@@ -917,6 +939,21 @@ def find_windows_gateway_services(
             ) > 0.001:
                 raise RuntimeError("Gateway process identity changed during SCM discovery")
             ancestor_pids = [int(parent.pid) for parent in gateway_process.parents()]
+            transitional_ancestors = [
+                pid for pid in ancestor_pids if pid in transitional_services_by_pid
+            ]
+            if transitional_ancestors:
+                details = ", ".join(
+                    f"{name}={status}"
+                    for pid in transitional_ancestors
+                    for name, status in sorted(
+                        transitional_services_by_pid[pid].items()
+                    )
+                )
+                raise RuntimeError(
+                    "SCM service in gateway ancestor chain has indeterminate status: "
+                    + details
+                )
             shared_service_pids = [
                 pid
                 for pid in ancestor_pids

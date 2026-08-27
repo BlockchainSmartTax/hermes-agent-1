@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -1066,6 +1067,130 @@ def test_find_windows_gateway_services_maps_verified_pid_tree(monkeypatch):
             gateway_create_time=300.0,
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("service_name", "service_pid", "expected_error"),
+    [
+        pytest.param(
+            "BcastDVRUserService_abcde", 900, None, id="unrelated-service"
+        ),
+        pytest.param(
+            "HermesGateway",
+            200,
+            "HermesGateway=stop_pending",
+            id="gateway-ancestor",
+        ),
+    ],
+)
+def test_find_windows_gateway_services_scopes_transitional_status_to_ancestry(
+    monkeypatch,
+    service_name,
+    service_pid,
+    expected_error,
+):
+    """Only a transitional service in the gateway ancestry blocks discovery."""
+    monkeypatch.setattr(gateway.sys, "platform", "win32")
+    profile = gateway.ProfileGatewayProcess(
+        profile="default", path=Path("profile"), pid=300, create_time=300.0
+    )
+
+    class FakeService:
+        def as_dict(self):
+            return {
+                "name": service_name,
+                "pid": service_pid,
+                "status": "stop_pending",
+            }
+
+    class FakeProcess:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def parents(self):
+            assert self.pid == 300
+            return [FakeProcess(200)]
+
+        def create_time(self):
+            return float(self.pid)
+
+    fake_psutil = SimpleNamespace(
+        win_service_iter=lambda: [FakeService()],
+        Process=FakeProcess,
+    )
+
+    if expected_error:
+        with pytest.raises(RuntimeError, match=expected_error):
+            gateway.find_windows_gateway_services(
+                psutil_module=fake_psutil,
+                profile_processes=[profile],
+            )
+    else:
+        assert (
+            gateway.find_windows_gateway_services(
+                psutil_module=fake_psutil,
+                profile_processes=[profile],
+            )
+            == []
+        )
+
+
+def test_find_windows_gateway_services_rejects_transitional_service_without_pid(
+    monkeypatch,
+):
+    """A transitional service with no PID has ambiguous ownership."""
+    monkeypatch.setattr(gateway.sys, "platform", "win32")
+
+    class FakeService:
+        def as_dict(self):
+            return {
+                "name": "UnknownPending",
+                "pid": 0,
+                "status": "start_pending",
+            }
+
+    fake_psutil = SimpleNamespace(win_service_iter=lambda: [FakeService()])
+
+    with pytest.raises(RuntimeError, match="SCM service enumeration failed") as excinfo:
+        gateway.find_windows_gateway_services(
+            psutil_module=fake_psutil,
+            profile_processes=[],
+        )
+
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert "UnknownPending=start_pending has no valid process ID" in str(
+        excinfo.value.__cause__
+    )
+
+
+@pytest.mark.parametrize("service_status", ["paused", "unknown"])
+def test_find_windows_gateway_services_rejects_non_pending_indeterminate_status(
+    monkeypatch,
+    service_status,
+):
+    monkeypatch.setattr(gateway.sys, "platform", "win32")
+
+    class FakeService:
+        def as_dict(self):
+            return {
+                "name": "UnexpectedState",
+                "pid": 900,
+                "status": service_status,
+            }
+
+    fake_psutil = SimpleNamespace(win_service_iter=lambda: [FakeService()])
+
+    with pytest.raises(RuntimeError, match="SCM service enumeration failed") as excinfo:
+        gateway.find_windows_gateway_services(
+            psutil_module=fake_psutil,
+            profile_processes=[],
+        )
+
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert (
+        f"UnexpectedState has indeterminate status: {service_status}"
+        in str(excinfo.value.__cause__)
+    )
 
 
 def test_find_windows_gateway_services_rejects_shared_service_host_pid(monkeypatch):
