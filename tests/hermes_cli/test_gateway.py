@@ -1016,15 +1016,16 @@ def test_find_windows_gateway_services_maps_verified_pid_tree(monkeypatch):
     profile = SimpleNamespace(profile="default", pid=300, create_time=300.0)
 
     class FakeService:
-        def __init__(self, name, pid):
+        def __init__(self, name, pid, status="running"):
             self.name = name
             self.pid = pid
+            self._status = status
 
         def as_dict(self):
             return {
                 "name": self.name,
                 "pid": self.pid,
-                "status": "running",
+                "status": self._status,
             }
 
     class FakeProcess:
@@ -1045,7 +1046,7 @@ def test_find_windows_gateway_services_maps_verified_pid_tree(monkeypatch):
     fake_psutil = SimpleNamespace(
         win_service_iter=lambda: [
             FakeService("HermesGateway", 100),
-            FakeService("UnrelatedService", 900),
+            FakeService("BcastDVRUserService_abcde", 900, "stop_pending"),
         ],
         Process=FakeProcess,
     )
@@ -1076,9 +1077,9 @@ def test_find_windows_gateway_services_maps_verified_pid_tree(monkeypatch):
             "BcastDVRUserService_abcde", 900, None, id="unrelated-service"
         ),
         pytest.param(
-            "HermesGateway",
+            "UnrelatedPendingService",
             200,
-            "HermesGateway=stop_pending",
+            "UnrelatedPendingService=stop_pending",
             id="gateway-ancestor",
         ),
     ],
@@ -1163,7 +1164,7 @@ def test_find_windows_gateway_services_rejects_transitional_service_without_pid(
     )
 
 
-@pytest.mark.parametrize("service_status", ["paused", "unknown"])
+@pytest.mark.parametrize("service_status", ["paused", "unknown", None])
 def test_find_windows_gateway_services_rejects_non_pending_indeterminate_status(
     monkeypatch,
     service_status,
@@ -1177,6 +1178,9 @@ def test_find_windows_gateway_services_rejects_non_pending_indeterminate_status(
                 "pid": 900,
                 "status": service_status,
             }
+
+        def status(self):
+            return service_status
 
     fake_psutil = SimpleNamespace(win_service_iter=lambda: [FakeService()])
 
